@@ -32,7 +32,7 @@ To install all dependencies for this project, follow these steps:
 
    Alternatively, you can install the dependencies manually:
    ```bash
-   pip install fastapi uvicorn opencv-python aiortc
+   pip install fastapi uvicorn[standard] opencv-python aiortc
    ```
 
 4. **Ensure you have a video file**:
@@ -44,7 +44,7 @@ To run the server, use the following command:
 
 1. **Start the FastAPI server**:
    ```bash
-   uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+   uvicorn main:app --host 0.0.0.0 --port 8000 --reload
    ```
 
 2. **Access the application**:
@@ -60,7 +60,7 @@ To run the server, use the following command:
 
 ## Project Structure
 
-- `server.py`: The main FastAPI server file that handles WebSocket connections and WebRTC signaling.
+- `main.py`: The main FastAPI server file that handles WebSocket connections and WebRTC signaling.
 - `templates/index.html`: The HTML template for the client interface.
 - `static/script.js`: The JavaScript file for handling client-side WebRTC and WebSocket communication.
 - `static/styles.css`: The CSS file for styling the client interface.
