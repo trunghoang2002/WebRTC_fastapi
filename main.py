@@ -30,6 +30,7 @@ class CustomVideoStreamTrack(VideoStreamTrack):
 
     async def recv(self):
         self.frame_count += 1
+        # print("Frame count:", self.frame_count)
         ret, frame = self.cap.read()
         if not ret:
             print("Failed to read frame from source")
@@ -82,6 +83,11 @@ RTC_CONFIGURATION = RTCConfiguration([
 connections = defaultdict(dict)
 
 # -------------------------------------------------------------------
+# Danh sách ICE candidates
+ice_candidates = []
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
 # Endpoint WebSocket: dùng làm signaling cho kết nối WebRTC
 # Mỗi khi có client kết nối, tạo một RTCPeerConnection mới và thêm video track.
 # -------------------------------------------------------------------
@@ -89,24 +95,58 @@ connections = defaultdict(dict)
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("WebSocket connection established")
-    pc = RTCPeerConnection()
-    # pc = RTCPeerConnection(configuration=RTC_CONFIGURATION)
+    # pc = RTCPeerConnection()
+    pc = RTCPeerConnection(configuration=RTC_CONFIGURATION)
     video_track = None
     connections[websocket] = {"pc": pc, "video_track": video_track}
 
-    # @pc.on("iceconnectionstatechange")
-    # async def on_iceconnectionstatechange():
-    #     print(f"ICE connection state: {pc.iceConnectionState}")
-    #     if pc.iceConnectionState == "failed":
-    #         await pc.close()
-    #         del connections[websocket]
+    @pc.on("iceconnectionstatechange")
+    async def on_iceconnectionstatechange():
+        print(f"ICE connection state: {pc.iceConnectionState}")
+        if pc.iceConnectionState == "failed":
+            await pc.close()
+            del connections[websocket]
 
-    # @pc.on("track")
-    # def on_track(track):
-    #     print(f"Track received: {track.kind}")
-    #     if track.kind == "video":
-    #         print("Video track added")
+    @pc.on("icecandidate")
+    async def on_ice_candidate(candidate):
+        if candidate is None:
+            return
+        print("Sending ICE candidate to Client")
+        await websocket.send(json.dumps({
+            "type": "candidate",
+            "candidate": candidate
+        }))
 
+    @pc.on("track")
+    def on_track(track):
+        print(f"Track received: {track.kind}")
+        if track.kind == "video":
+            print("Video track added")
+
+    @pc.on("signalingstatechange")
+    async def on_signalingstatechange():
+        print('Signaling state change:', pc.signalingState)
+        if pc.signalingState == 'stable':
+            print('ICE gathering complete')
+            # Log all gathered candidates
+            for candidate in ice_candidates:
+                print('Gathered candidate:', candidate)
+    
+    @pc.on('connectionstatechange')
+    async def on_connectionstatechange():
+        print('Connection state change:', pc.connectionState)
+        if pc.connectionState == 'connected':
+            print('Peers successfully connected')
+
+    @pc.on('icegatheringstatechange')
+    async def on_icegatheringstatechange():
+        print('ICE gathering state changed to', pc.iceGatheringState)
+        if pc.iceGatheringState == 'complete':
+            print('All ICE candidates have been gathered.')
+            # Log all gathered candidates
+            for candidate in ice_candidates:
+                print('Gathered candidate:', candidate)
+    
     try:
         while True:
             data = await websocket.receive_text()
@@ -116,6 +156,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 print(f"Starting video stream from: {message['source']}")
                 video_track = CustomVideoStreamTrack(message['source'])
                 pc.addTrack(video_track)
+                # pc.addTransceiver("video", direction="sendonly")
                 offer = await pc.createOffer()
                 await pc.setLocalDescription(offer)
                 print(f"Sending offer: {pc.localDescription.sdp}")
@@ -129,9 +170,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     sdp=message['sdp'],
                     type=message['type']
                 ))
-            # elif message['type'] == 'candidate':
-            #     print("Received ICE candidate from client")
-            #     await pc.addIceCandidate(RTCIceCandidate(message['candidate']))
+            elif message['type'] == 'candidate':
+                print("Received ICE candidate from client")
+                candidate = message['candidate']
+                ip = candidate['candidate'].split(' ')[4]
+                port = candidate['candidate'].split(' ')[5]
+                protocol = candidate['candidate'].split(' ')[2]
+                priority = candidate['candidate'].split(' ')[3]
+                foundation = candidate['candidate'].split(' ')[0].split(':')[1]
+                component = "rtp" if candidate['candidate'].split(' ')[1] == "1" else "rtcp"
+                type = candidate['candidate'].split(' ')[7]
+                candidate = RTCIceCandidate(ip=ip,
+                                            port=port,
+                                            protocol=protocol,
+                                            priority=priority,
+                                            foundation=foundation,
+                                            component=component,
+                                            type=type,
+                                            sdpMid=candidate['sdpMid'], 
+                                            sdpMLineIndex=candidate['sdpMLineIndex'])
+                await pc.addIceCandidate(candidate)
+                ice_candidates.append(candidate)
     except WebSocketDisconnect:
         print("Client disconnected")
         await pc.close()
@@ -142,7 +201,7 @@ async def websocket_endpoint(websocket: WebSocket):
         del connections[websocket]
 
 # -------------------------------------------------------------------
-# Chạy ứng dụng bằng lệnh: uvicorn main:app --host 0.0.0.0 --port 8000
+# Chạy ứng dụng bằng lệnh: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 # -------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn

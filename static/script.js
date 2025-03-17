@@ -17,28 +17,30 @@ let ws; // WebSocket
 
 // Hàm khởi tạo RTCPeerConnection và WebSocket
 function initializeConnection() {
-    pc = new RTCPeerConnection();
-    // pc = new RTCPeerConnection(configuration);
+    // pc = new RTCPeerConnection();
+    pc = new RTCPeerConnection(configuration);
     ws = new WebSocket('ws://localhost:8000/ws');
+    // ws = new WebSocket('wss://vast-alien-obviously.ngrok-free.app/ws'); // use: ngrok http --url=vast-alien-obviously.ngrok-free.app 8000
 
     // Xử lý khi nhận được track video từ server
     pc.ontrack = function (event) {
         if (event.track.kind === 'video') {
             console.log("Video track received");
             video.srcObject = event.streams[0];
+            video.play();
         }
     };
 
     // Xử lý khi có ICE candidate được tạo
-    // pc.onicecandidate = (event) => {
-    //     if (event.candidate) {
-    //         console.log("Sending ICE candidate to server");
-    //         ws.send(JSON.stringify({
-    //             type: 'candidate',
-    //             candidate: event.candidate
-    //         }));
-    //     }
-    // };
+    pc.onicecandidate = (event) => {
+        if (event.candidate) {
+            console.log("Sending ICE candidate to server");
+            ws.send(JSON.stringify({
+                type: 'candidate',
+                candidate: event.candidate
+            }));
+        }
+    };
 
     // Xử lý tin nhắn từ WebSocket
     ws.onmessage = async function (event) {
@@ -48,20 +50,26 @@ function initializeConnection() {
                 console.error("RTCPeerConnection is closed, cannot set remote description");
                 return;
             }
+            // Đặt Offer từ server
             console.log("Received offer from server");
             await pc.setRemoteDescription(new RTCSessionDescription(message));
+            // Tạo Answer
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
+            // Gửi Answer về server
             console.log("Sending answer to server");
-            ws.send(JSON.stringify(answer));
-        }// else if (message.type === 'candidate') {
-        //     if (pc.signalingState === 'closed') {
-        //         console.error("RTCPeerConnection is closed, cannot add ICE candidate");
-        //         return;
-        //     }
-        //     console.log("Received ICE candidate from server");
-        //     await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
-        // }
+            ws.send(JSON.stringify({
+                type: "answer",
+                sdp: answer.sdp
+            }));
+        } else if (message.type === 'candidate') {
+            if (pc.signalingState === 'closed') {
+                console.error("RTCPeerConnection is closed, cannot add ICE candidate");
+                return;
+            }
+            console.log("Received ICE candidate from server");
+            await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+        }
     };
 
     ws.onerror = function (error) {
