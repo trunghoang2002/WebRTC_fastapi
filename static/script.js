@@ -9,7 +9,7 @@ const configuration = {
         ],
       },
     ],
-    iceCandidatePoolSize: 10,
+    // iceCandidatePoolSize: 10,
 };
 
 let pc; // RTCPeerConnection
@@ -39,6 +39,37 @@ function initializeConnection() {
                 type: 'candidate',
                 candidate: event.candidate
             }));
+        }
+    };
+
+    // Xử lý khi ICE connection state thay đổi
+    pc.oniceconnectionstatechange = function () {
+        console.log("ICE connection state:", pc.iceConnectionState);
+        if (pc.iceConnectionState === "failed") {
+            console.error("ICE connection failed");
+        }
+    };
+    
+    // Xử lý khi ICE gathering state thay đổi
+    pc.onicegatheringstatechange = function () {
+        console.log("IICE gathering state changed to:", pc.iceGatheringState);
+        if (pc.iceGatheringState === "complete") {
+            console.log("All ICE candidates have been gathered.");
+        }
+    };
+
+    pc.onsignalingstatechange = function () {
+        console.log("Signaling state change:", pc.signalingState);
+        if (pc.signalingState === "stable") {
+            console.log("ICE gathering complete");
+        }
+    };
+    
+    // Xử lý khi connection state thay đổi
+    pc.onconnectionstatechange = function () {
+        console.log("Connection state change:", pc.connectionState);
+        if (pc.connectionState === "connected") {
+            console.log("Peers successfully connected");
         }
     };
 

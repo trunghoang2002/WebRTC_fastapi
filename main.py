@@ -104,6 +104,9 @@ async def websocket_endpoint(websocket: WebSocket):
     async def on_iceconnectionstatechange():
         print(f"ICE connection state: {pc.iceConnectionState}")
         if pc.iceConnectionState == "failed":
+            print("ICE connection failed - checking gathered candidates")
+            for candidate in ice_candidates:
+                print(f"Gathered candidate: {candidate}")
             await pc.close()
             del connections[websocket]
 
@@ -111,7 +114,7 @@ async def websocket_endpoint(websocket: WebSocket):
     async def on_ice_candidate(candidate):
         if candidate is None:
             return
-        print("Sending ICE candidate to Client")
+        print(f"Sending ICE candidate to Client: {candidate}")
         await websocket.send(json.dumps({
             "type": "candidate",
             "candidate": candidate
